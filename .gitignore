@@ -12,9 +12,6 @@ conf/**/*credentials*
 # ignore everything in the following folders
 data/**
 
-# Keep LFS tracked files
-!data/04_quite_labelled/*.tar.gz
-
 # except their sub-folders
 !data/**/
 

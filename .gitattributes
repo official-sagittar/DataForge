@@ -1,1 +1,1 @@
-data/04_quite_labelled/*.tar.gz filter=lfs diff=lfs merge=lfs -text
+data/04_quite_labelled/*.csv filter=lfs diff=lfs merge=lfs -text
