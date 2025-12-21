@@ -11,8 +11,10 @@ self_play:
 
 pgn_to_fen_with_wdl:
   pgn_dir: "data/02_pgns"
-  output_dir: "data/03_raw_fens"
+  raw_fens_output_dir: "data/03_raw_fens"
+  sampled_labelled_output_dir: "data/03_sampled_fens"
   quite_labelled_output_dir: "data/04_quite_labelled"
+  samples_per_game_pct: 0.1
 
 create_training_data:
   quite_labelled_dir: "data/04_quite_labelled"

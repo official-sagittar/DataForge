@@ -42,6 +42,9 @@ def create_training_data(quite_labelled_data_path: str, output_dir: str, size: i
     # Tap a sample using Weighted Sampling
     training_data = weighted_sample(training_data, size, verify=True)
 
+    # Shuffle rows
+    training_data = training_data.sample(frac=1).reset_index(drop=True)
+
     # Write training data as .epd
     training_data = training_data[["fen", "wdl"]]
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
