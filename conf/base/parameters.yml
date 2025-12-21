@@ -13,3 +13,8 @@ pgn_to_fen_with_wdl:
   pgn_dir: "data/02_pgns"
   output_dir: "data/03_raw_fens"
   quite_labelled_output_dir: "data/04_quite_labelled"
+
+create_training_data:
+  quite_labelled_dir: "data/04_quite_labelled"
+  training_data_output_dir: "data/05_training_data"
+  size: 100000
