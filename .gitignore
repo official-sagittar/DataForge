@@ -13,7 +13,7 @@ conf/**/*credentials*
 data/**
 
 # Keep LFS tracked files
-!data/04_quite_labelled/*.csv
+!data/02_pgns/*.pgn
 
 # except their sub-folders
 !data/**/
