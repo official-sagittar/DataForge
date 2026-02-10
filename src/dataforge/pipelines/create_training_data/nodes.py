@@ -40,7 +40,7 @@ def create_training_data(quite_labelled_data_path: str, output_dir: str, size: i
     create_features(training_data)
 
     # Tap a sample using Weighted Sampling
-    training_data = weighted_sample(training_data, size, n_phase_bins=2, verify=True)
+    training_data = weighted_sample(training_data, size, n_phase_bins=3, verify=True)
 
     # Shuffle rows
     training_data = training_data.sample(frac=1).reset_index(drop=True)

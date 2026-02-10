@@ -23,7 +23,8 @@ def self_play(
         f'-engine cmd="{engine2_path}" name=engine2 '
         f'-openings file="{opening_book_path}" format={opening_book_fmt} order=random '
         f'-each tc={tc} option.Hash=64 -rounds {rounds} -games 1 '
-        f'-draw movenumber=60 movecount=8 score=10 '
+        f'-resign movecount=3 score=400 twosided=true '
+        f'-draw movenumber=40 movecount=8 score=10 '
         f'-concurrency {concurrency} '
         f'-pgnout file="{pgn_path}"'
     )
