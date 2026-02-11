@@ -26,6 +26,7 @@ def self_play(
         f'-resign movecount=3 score=400 twosided=true '
         f'-draw movenumber=40 movecount=8 score=10 '
         f'-concurrency {concurrency} '
+	f'-recover '
         f'-pgnout file="{pgn_path}"'
     )
 
