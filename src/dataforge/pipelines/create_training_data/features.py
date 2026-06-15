@@ -27,5 +27,11 @@ def _calc_pos_phase(row) -> int:
     return int(phase)
 
 
+def _calc_stm(row) -> str:
+    board = chess.Board(row["fen"])
+    return "w" if board.turn == chess.WHITE else "b"
+
+
 def create_features(df: pd.DataFrame) -> None:
     df['phase'] = df.apply(_calc_pos_phase, axis=1)
+    df["stm"] = df.apply(_calc_stm, axis=1)

@@ -3,7 +3,6 @@ from datetime import datetime
 import uuid
 import pandas as pd
 import chess.pgn
-from .qsearch import is_quite, quiesce_to_quiet
 
 
 def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
@@ -71,28 +70,16 @@ def convert_pos_to_quite(raw_fens_csv_path: str, output_dir: str) -> str:
     df = pd.read_csv(raw_fens_csv_path)
     quiet_rows = []
 
-    total = len(df)
-    next_pct = 1
-    step = max(1, total // 100)
-
     for index, row in df.iterrows():
         board = chess.Board(row["fen"])
 
         if board.is_check():
             continue
 
-        if is_quite(board):
-            quiet_rows.append(row)
-        else:
-            success, quite_pos = quiesce_to_quiet(board, max_depth=10)
-            if (success):
-                new_row = row.copy()
-                new_row["fen"] = quite_pos.fen()
-                quiet_rows.append(new_row)
+        has_capture_moves = any(board.is_capture(m) for m in board.legal_moves)
 
-        if index >= next_pct * step:
-            print(f"Progress: {next_pct}% ({index}/{total})")
-            next_pct += 1
+        if not has_capture_moves:
+            quiet_rows.append(row)
 
     quiet_df = pd.DataFrame(quiet_rows)
     quiet_df = quiet_df[["fen", "wdl"]]
