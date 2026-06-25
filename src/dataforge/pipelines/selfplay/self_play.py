@@ -1,6 +1,36 @@
 import subprocess
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
+
+
+def _build_search_limit(
+    search_limit_type: str,
+    tc: Optional[str],
+    depth: int,
+    nodes: Optional[int],
+) -> str:
+    if search_limit_type == "timecontrol":
+        if not tc:
+            raise ValueError("tc must be set when search_limit_type is 'timecontrol'")
+        return f"tc={tc}"
+
+    if search_limit_type == "depth":
+        if depth <= 0:
+            raise ValueError("depth must be greater than 0")
+        return f"depth={depth}"
+
+    if search_limit_type == "nodes":
+        if nodes is None or nodes <= 0:
+            raise ValueError(
+                "nodes must be greater than 0 when search_limit_type is 'nodes'"
+            )
+        return f"nodes={nodes}"
+
+    raise ValueError(
+        "search_limit_type must be one of 'timecontrol', 'depth', or 'nodes'"
+    )
+
 
 def self_play(
     tournament_runner_path: str,
@@ -8,21 +38,25 @@ def self_play(
     engine2_path: str,
     opening_book_path: str,
     opening_book_fmt: str,
-    tc: str,
     rounds: int,
     output_dir: Path,
     concurrency: int = 4,
+    search_limit_type: str = "depth",
+    tc: Optional[str] = None,
+    depth: int = 10,
+    nodes: Optional[int] = None,
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     pgn_path = output_dir / f"{timestamp}.pgn"
+    search_limit = _build_search_limit(search_limit_type, tc, depth, nodes)
 
     cmd = (
         f'"{tournament_runner_path}" '
         f'-engine cmd="{engine1_path}" name=engine1 '
         f'-engine cmd="{engine2_path}" name=engine2 '
         f'-openings file="{opening_book_path}" format={opening_book_fmt} order=random '
-        f'-each tc={tc} option.Hash=64 -rounds {rounds} -games 1 '
+        f'-each {search_limit} option.Hash=64 -rounds {rounds} -games 1 '
         f'-resign movecount=3 score=400 twosided=true '
         f'-draw movenumber=40 movecount=8 score=10 '
         f'-concurrency {concurrency} '

@@ -14,6 +14,8 @@ dependencies = [
  "kedro~=1.0.0",
  "pandas>=2.3.3",
  "python-chess>=1.999",
+ "matplotlib>=3.9.4",
+ "seaborn>=0.13.2",
 ]
 
 [project.scripts]

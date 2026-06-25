@@ -1,10 +1,19 @@
+create_opening_book:
+  seed_openings: "data/01_opening_books/2moves_v1.epd"
+  output_dir: "data/01_opening_books"
+  size: 20000
+  random_seed: 42
+
 self_play:
   tournament_runner_path: "path/to/fastchess.exe"
   engine1_path: "path/to/engine1.exe"
   engine2_path: "path/to/engine2.exe"
   opening_book_path: "data/01_opening_books/4moves_noob.epd"
   opening_book_fmt: "epd"
+  search_limit_type: "depth"
   tc: "10+0.1"
+  depth: 10
+  nodes: 1000000
   rounds: 10
   concurrency: 4
   output_dir: "data/02_pgns"
