@@ -1,8 +1,10 @@
 import math
-import numpy as np
-import pandas as pd
 from pathlib import Path
 from datetime import datetime
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def filter_quiet_positions(df: pd.DataFrame) -> pd.DataFrame:
@@ -35,7 +37,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def sample_positions_by_start_fen_phase(
     df: pd.DataFrame,
-    sample_pct: float = 0.3,
+    sample_pct: float = 0.1,
     seed: int = 42,
     min_rows_per_group: int = 1,
     include_phase: bool = False,
@@ -96,7 +98,7 @@ def sample_positions_by_start_fen_phase(
 
 def remove_iqr_outliers_by_phase_wdl_stm(
     df: pd.DataFrame,
-    include_stm: bool = False,
+    include_stm: bool = True,
 ) -> pd.DataFrame:
     """
     Removes outliers using IQR bounds computed within:
@@ -234,9 +236,9 @@ def tag_signal_noise_by_phase_wdl_stm_median(
 
 def sample_uniform_phase_wdl_stm_signal_noise(
     df: pd.DataFrame,
-    signal_ratio: float = 0.6,
+    signal_ratio: float = 0.7,
     seed: int = 42,
-    include_stm: bool = False,
+    include_stm: bool = True,
 ) -> pd.DataFrame:
     """
     Samples the largest feasible balanced dataset without replacement.
@@ -482,6 +484,245 @@ def print_eval_summary_by_phase_wdl_stm_signal(
         )
 
     return summary
+
+
+def plot_eval_boxplot_phase_wdl_stm_signal(
+    df: pd.DataFrame,
+    output_dir: str,
+) -> None:
+    """
+    Saves a box plot of eval distribution at:
+        pos_phase_label x pos_stm x signal_type
+
+    Split/color-coded by game_wdl:
+      - game_wdl == 0.0: black
+      - game_wdl == 0.5: light gray
+      - game_wdl == 1.0: white
+
+    Uses actual position-level rows, not the aggregated summary.
+    """
+
+    eval_col = "pos_eval_white_pov"
+
+    required_cols = [
+        "pos_phase_label",
+        "game_wdl",
+        "pos_stm",
+        "signal_type",
+        eval_col,
+    ]
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    plot_df = df.copy()
+
+    plot_df[eval_col] = pd.to_numeric(
+        plot_df[eval_col],
+        errors="coerce",
+    )
+    plot_df = plot_df.dropna(subset=[eval_col]).copy()
+
+    plot_df["game_wdl_label"] = plot_df["game_wdl"].map(
+        {
+            0.0: "Black win",
+            0.5: "Draw",
+            1.0: "White win",
+        }
+    )
+
+    if plot_df["game_wdl_label"].isna().any():
+        bad_values = plot_df.loc[
+            plot_df["game_wdl_label"].isna(),
+            "game_wdl",
+        ].unique()
+
+        raise ValueError(f"Unexpected game_wdl values found: {bad_values}")
+
+    plot_df["plot_group"] = (
+        plot_df["pos_phase_label"].astype(str)
+        + " | "
+        + plot_df["pos_stm"].astype(str)
+        + " | "
+        + plot_df["signal_type"].astype(str)
+    )
+
+    group_order = [
+        "MG | w | signal",
+        "MG | w | noise",
+        "MG | b | signal",
+        "MG | b | noise",
+        "EG | w | signal",
+        "EG | w | noise",
+        "EG | b | signal",
+        "EG | b | noise",
+    ]
+
+    group_order = [
+        group for group in group_order
+        if group in set(plot_df["plot_group"])
+    ]
+
+    hue_order = ["Black win", "Draw", "White win"]
+
+    palette = {
+        "Black win": "black",
+        "Draw": "lightgray",
+        "White win": "white",
+    }
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = output_dir / f"Training Data Eval Plot_{timestamp}.svg"
+
+    plt.figure(figsize=(18, 10))
+
+    ax = sns.boxplot(
+        data=plot_df,
+        x="plot_group",
+        y=eval_col,
+        hue="game_wdl_label",
+        order=group_order,
+        hue_order=hue_order,
+        palette=palette,
+        showfliers=False,
+        linewidth=1.0,
+    )
+
+    # Add median labels
+    medians = (
+        plot_df
+        .groupby(["plot_group", "game_wdl_label"], dropna=False)[eval_col]
+        .median()
+        .reset_index()
+    )
+
+    x_positions = {group: i for i, group in enumerate(group_order)}
+    hue_offsets = {
+        "Black win": -0.267,
+        "Draw": 0.000,
+        "White win": 0.267,
+    }
+
+    for _, row in medians.iterrows():
+        group = row["plot_group"]
+        wdl_label = row["game_wdl_label"]
+        median_value = row[eval_col]
+
+        if group not in x_positions or wdl_label not in hue_offsets:
+            continue
+
+        x = x_positions[group] + hue_offsets[wdl_label]
+        y = median_value
+
+        ax.text(
+            x,
+            y,
+            f"{median_value:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=7,
+            rotation=90,
+            color="red",
+        )
+
+    # Add count and dataset percentage labels
+    total_rows = len(plot_df)
+
+    dist = (
+        plot_df
+        .groupby(["plot_group", "game_wdl_label"], dropna=False)
+        .size()
+        .reset_index(name="count")
+    )
+
+    dist["pct"] = dist["count"] / total_rows * 100
+
+    y_min = plot_df[eval_col].min()
+    y_max = plot_df[eval_col].max()
+    y_range = y_max - y_min
+
+    label_y = y_max + 0.03 * y_range
+
+    for _, row in dist.iterrows():
+        group = row["plot_group"]
+        wdl_label = row["game_wdl_label"]
+        count = int(row["count"])
+        pct = row["pct"]
+
+        if group not in x_positions or wdl_label not in hue_offsets:
+            continue
+
+        x = x_positions[group] + hue_offsets[wdl_label]
+
+        ax.text(
+            x,
+            label_y,
+            f"n={count:,}\n{pct:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=6,
+            rotation=90,
+            color="black",
+        )
+
+    # Add total dataset rows label in top-right
+    ax.text(
+        0.99,
+        0.98,
+        f"Total rows: {total_rows:,}",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=10,
+        bbox={
+            "boxstyle": "round,pad=0.3",
+            "facecolor": "white",
+            "edgecolor": "black",
+            "alpha": 0.85,
+        },
+    )
+
+    # Give top labels some headroom
+    ax.set_ylim(y_min - 0.05 * y_range, y_max + 0.20 * y_range)
+
+    # Make white and light-gray boxes visible.
+    for patch in ax.patches:
+        patch.set_edgecolor("black")
+        patch.set_linewidth(1.0)
+
+    ax.axhline(
+        0,
+        linestyle="--",
+        linewidth=1,
+        color="black",
+        alpha=0.6,
+    )
+
+    ax.set_title(
+        "Eval Distribution by Phase x STM x Signal Type, split by Game Result"
+    )
+    ax.set_xlabel("Phase | Side to Move | Signal Type")
+    ax.set_ylabel(eval_col)
+
+    plt.xticks(rotation=90, ha="right")
+
+    handles, labels = ax.get_legend_handles_labels()
+    clean = dict(zip(labels[:3], handles[:3]))
+
+    ax.legend(
+        clean.values(),
+        clean.keys(),
+        title="Game result",
+        loc="best",
+    )
+
+    plt.tight_layout()
+    plt.savefig(output_path, format="svg", bbox_inches="tight")
+    plt.close()
 
 
 def write_epd(df: pd.DataFrame, output_dir: str) -> None:

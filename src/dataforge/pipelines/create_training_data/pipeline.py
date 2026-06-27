@@ -71,6 +71,15 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="print_eval_summary_by_phase_wdl_stm_signal_node",
         ),
         node(
+            func=plot_eval_boxplot_phase_wdl_stm_signal,
+            inputs={
+                "df": "training_data",
+                "output_dir": "params:create_training_data.training_data_output_dir",
+            },
+            outputs=None,
+            name="plot_eval_boxplot_phase_wdl_stm_signal_node",
+        ),
+        node(
             func=write_epd,
             inputs={
                 "df": "training_data",
