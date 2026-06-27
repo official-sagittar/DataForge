@@ -3,5 +3,12 @@
 # Documentation for this file format can be found in "The Data Catalog"
 # Link: https://docs.kedro.org/en/stable/data/data_catalog.html
 
-self_play_pgn_path:
-  type: memory_dataset.MemoryDataset
+raw_labelled_fens:
+  type: pandas.ParquetDataset
+  filepath: data/03_raw_fens/Raw_Labelled_FENs.parquet
+  versioned: true
+
+training_data:
+  type: pandas.ParquetDataset
+  filepath: data/04_training_data/Training_Data.parquet
+  versioned: true

@@ -12,6 +12,6 @@ Training dataset generation pipeline for Sagittar
 
 `$ uv run kedro run --pipeline selfplay`
 
-### FEN generation with WDL
+### Training Dataset Generation Pipeline
 
-`$ uv run kedro run --pipeline pgn_to_fen_with_wdl`
+`$ uv run kedro run`

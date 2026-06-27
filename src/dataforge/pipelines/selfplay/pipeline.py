@@ -7,7 +7,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         node(
             func=generate_pgn_from_self_play,
             inputs="params:self_play",
-            outputs="self_play_pgn_path",
+            outputs=None,
             name="self_play_node"
         )
     ])

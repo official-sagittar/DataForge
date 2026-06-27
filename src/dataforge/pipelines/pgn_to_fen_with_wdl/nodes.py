@@ -63,10 +63,8 @@ def calc_pos_phase(board) -> int:
     return clamp(int(phase), 0, 256)
 
 
-def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
+def pgn_to_fen_with_wdl(pgn_dir: str) -> str:
     pgn_dir = Path(pgn_dir)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
     pgn_dir = Path(pgn_dir)
@@ -79,10 +77,11 @@ def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
                     break
 
                 result = game.headers.get("Result", "*")
+                starting_fen = game.headers.get("FEN", "")
                 timectrl = game.headers.get("TimeControl", "-")
                 termination = game.headers.get("Termination", "")
                 duration = game.headers.get("GameDuration", "")
-                plycnt = game.headers.get("PlyCount", 0)
+                plycnt = int(game.headers.get("PlyCount", 0))
 
                 if result == "1-0":
                     wdl = 1
@@ -96,6 +95,7 @@ def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
                 game_id = str(uuid.uuid4())
 
                 board = game.board()
+                ply = 0
                 for node in game.mainline():
                     fen = board.fen()
 
@@ -109,10 +109,15 @@ def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
                         and eval_type != "mate"
                     )
 
+                    move = node.move
+
                     rows.append((
                         game_id,
                         timectrl,
+                        starting_fen,
+                        ply,
                         fen,
+                        move.uci(),
                         node.comment,
                         is_quite_pos,
                         phase,
@@ -126,8 +131,8 @@ def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
                         plycnt
                     ))
 
-                    move = node.move
                     board.push(move)
+                    ply = ply + 1
 
     if not rows:
         raise ValueError(f"No valid positions found in {pgn_dir}")
@@ -137,12 +142,15 @@ def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
         columns=[
             "game_id",
             "game_time_control",
+            "game_start_fen",
+            "pos_ply",
             "pos_fen",
+            "pos_bestmove",
             "pos_pgn_comment",
             "pos_is_quiet",
             "pos_phase",
             "pos_eval_type",
-            "pos_eval",
+            "pos_eval_stm_pov",
             "pos_depth",
             "pos_engine_time",
             "game_wdl",
@@ -151,50 +159,5 @@ def pgn_to_fen_with_wdl(pgn_dir: str, output_dir: str) -> str:
             "game_plycount",
         ]
     )
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = output_dir / f"Raw Labelled FENs_{timestamp}.csv"
-    df.to_csv(output_path, index=False)
 
-    return str(output_path)
-
-
-def sample_game_fens(raw_fens_csv_path: str, output_dir: str, samples_per_game_pct: float = 0.10, seed: int = 42):
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    raw_fens_df = pd.read_csv(raw_fens_csv_path)
-
-    sampled_raw_fens_df = raw_fens_df.groupby("game_id", group_keys=False).sample(frac=samples_per_game_pct, random_state=seed).reset_index(drop=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = output_dir / f"Sampled Labelled FENs_{timestamp}.csv"
-    sampled_raw_fens_df.to_csv(output_path, index=False)
-
-    return output_path
-
-
-def convert_pos_to_quite(raw_fens_csv_path: str, output_dir: str) -> str:
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    df = pd.read_csv(raw_fens_csv_path)
-    quiet_rows = []
-
-    for index, row in df.iterrows():
-        board = chess.Board(row["fen"])
-
-        if board.is_check():
-            continue
-
-        has_capture_moves = any(board.is_capture(m) for m in board.legal_moves)
-
-        if not has_capture_moves:
-            quiet_rows.append(row)
-
-    quiet_df = pd.DataFrame(quiet_rows)
-    quiet_df = quiet_df[["fen", "wdl"]]
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = output_dir / f"Quite Labelled_{timestamp}.csv"
-    quiet_df.to_csv(output_path, index=False)
-
-    return output_path
+    return df
