@@ -17,6 +17,7 @@ dependencies = [
  "matplotlib>=3.9.4",
  "seaborn>=0.13.2",
  "pyarrow>=21.0.0",
+ "kedro-datasets>=4.1.0",
 ]
 
 [project.scripts]

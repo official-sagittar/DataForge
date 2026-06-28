@@ -8,18 +8,27 @@ import seaborn as sns
 
 
 def filter_quiet_positions(df: pd.DataFrame) -> pd.DataFrame:
+    print(df.shape)
     return df[df["pos_is_quiet"]]
 
 
 def remove_duplicate_positions(df: pd.DataFrame) -> pd.DataFrame:
+    print(df.shape)
     return df.drop_duplicates(subset=['pos_fen'], keep='first')
 
 
 def remove_positions_from_short_games(df: pd.DataFrame) -> pd.DataFrame:
+    print(df.shape)
     return df[df['game_plycount'] >= 20]
 
 
+def remove_positions_from_early_ply(df: pd.DataFrame) -> pd.DataFrame:
+    print(df.shape)
+    return df[df['pos_ply'] > 8]
+
+
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
+    print(df.shape)
     df["pos_stm"] = df["pos_fen"].str.split().str[1]
     df.loc[:, "pos_phase_label"] = np.where(
         df["pos_phase"] >= 128,
@@ -37,10 +46,10 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def sample_positions_by_start_fen_phase(
     df: pd.DataFrame,
-    sample_pct: float = 0.1,
+    sample_pct: float = 0.5,
     seed: int = 42,
     min_rows_per_group: int = 1,
-    include_phase: bool = False,
+    include_phase: bool = True,
 ) -> pd.DataFrame:
     """
     Samples positions group-wise.
@@ -52,8 +61,13 @@ def sample_positions_by_start_fen_phase(
     Returns all original columns.
     """
 
+    print(df.shape)
+
     if not 0 < sample_pct <= 1:
         raise ValueError("sample_pct must be between 0 and 1")
+
+    if sample_pct ==  1.0:
+        return df
 
     if min_rows_per_group < 0:
         raise ValueError("min_rows_per_group must be >= 0")
@@ -111,6 +125,8 @@ def remove_iqr_outliers_by_phase_wdl_stm(
         value > Q3 + (1.5 * IQR)
     """
 
+    print(df.shape)
+
     required_cols = ["pos_eval_white_pov", "pos_phase_label", "game_wdl", "pos_stm"]
     missing_cols = [col for col in required_cols if col not in df.columns]
 
@@ -165,12 +181,16 @@ def remove_iqr_outliers_by_phase_wdl_stm(
     )
 
     clean_df = work_df[~work_df["is_iqr_outlier"]].copy()
+
+    print(clean_df.shape)
+
     return clean_df.reset_index(drop=True)
 
 
 def tag_signal_noise_by_phase_wdl_stm_median(
     df: pd.DataFrame,
-    draw_band: float = 0.05,
+    draw_band: float = 0.15,
+    include_stm = True
 ) -> pd.DataFrame:
     """
     Computes median eval at phase x WDL x stm level and tags rows as signal/noise.
@@ -183,7 +203,10 @@ def tag_signal_noise_by_phase_wdl_stm_median(
     Noise otherwise.
     """
 
-    group_cols = ["pos_phase_label", "game_wdl", "pos_stm"]
+    group_cols = ["pos_phase_label", "game_wdl"]
+    if include_stm:
+        group_cols.append("pos_stm")
+
     required_cols = group_cols + ["pos_eval_white_pov"]
 
     missing_cols = [col for col in required_cols if col not in df.columns]
@@ -239,22 +262,34 @@ def sample_uniform_phase_wdl_stm_signal_noise(
     signal_ratio: float = 0.7,
     seed: int = 42,
     include_stm: bool = True,
+    include_draws_in_strata_size: bool = False,
 ) -> pd.DataFrame:
     """
-    Samples the largest feasible balanced dataset without replacement.
+    Samples a balanced dataset without replacement.
 
     Guarantees:
       - if include_stm=True:
-          uniform pos_phase_label x game_wdl x pos_stm
+          groups by pos_phase_label x game_wdl x pos_stm
       - if include_stm=False:
-          uniform pos_phase_label x game_wdl
-      - within each stratum:
-          signal_ratio signal rows
-          1 - signal_ratio noise rows
+          groups by pos_phase_label x game_wdl
+      - within each sampled stratum:
+          approximately signal_ratio signal rows
+          approximately 1 - signal_ratio noise rows
       - no replacement
 
-    The function automatically chooses the largest feasible strata_size.
+    include_draws_in_strata_size:
+      - True:
+          current behavior. Draws are included when computing global strata_size.
+          All strata get the same size.
+
+      - False:
+          strata_size is computed only from decisive games: game_wdl 0.0 and 1.0.
+          Decisive strata get that full strata_size.
+          Draw strata are capped at their own feasible size if smaller.
+          This prevents weak draw buckets from bottlenecking the whole dataset.
     """
+
+    print(df.shape)
 
     if not 0 < signal_ratio < 1:
         raise ValueError("signal_ratio must be between 0 and 1")
@@ -306,24 +341,33 @@ def sample_uniform_phase_wdl_stm_signal_noise(
         ["max_strata_from_signal", "max_strata_from_noise"]
     ].min(axis=1)
 
-    strata_size = math.floor(
-        availability_pivot["max_feasible_strata_size"].min()
+    print(availability_pivot)
+
+    if include_draws_in_strata_size:
+        strata_size_source = availability_pivot
+    else:
+        strata_size_source = availability_pivot[
+            availability_pivot["game_wdl"].isin([0.0, 1.0])
+        ]
+
+        if strata_size_source.empty:
+            raise ValueError(
+                "No decisive-game strata found. "
+                "Expected game_wdl values 0.0 and/or 1.0."
+            )
+
+    global_strata_size = math.floor(
+        strata_size_source["max_feasible_strata_size"].min()
     )
 
-    if strata_size <= 0:
+    if global_strata_size <= 0:
         raise ValueError(
-            "No feasible strata_size found. At least one stratum does not "
-            "have enough signal/noise rows."
+            "No feasible strata_size found. At least one selected stratum "
+            "does not have enough signal/noise rows."
         )
 
-    n_signal = math.floor(strata_size * signal_ratio)
-    n_noise = strata_size - n_signal
-
-    if n_signal <= 0 or n_noise <= 0:
-        raise ValueError(
-            f"Computed invalid sample sizes: "
-            f"strata_size={strata_size}, n_signal={n_signal}, n_noise={n_noise}"
-        )
+    print(f"Global strata_size: {global_strata_size:,}")
+    print(f"include_draws_in_strata_size: {include_draws_in_strata_size}")
 
     sampled_parts = []
 
@@ -331,8 +375,58 @@ def sample_uniform_phase_wdl_stm_signal_noise(
     groups = sorted(groups, key=lambda x: str(x[0]))
 
     for i, (group_key, group_df) in enumerate(groups):
+        # group_key can be scalar or tuple depending on group_cols length
+        if len(group_cols) == 1:
+            group_key_values = {group_cols[0]: group_key}
+        else:
+            group_key_values = dict(zip(group_cols, group_key))
+
+        game_wdl = group_key_values["game_wdl"]
+
+        availability_row = availability_pivot.copy()
+
+        for col, value in group_key_values.items():
+            availability_row = availability_row[availability_row[col] == value]
+
+        if availability_row.empty:
+            raise ValueError(f"Could not find availability row for group {group_key}")
+
+        max_feasible_for_group = math.floor(
+            availability_row["max_feasible_strata_size"].iloc[0]
+        )
+
+        if include_draws_in_strata_size:
+            target_strata_size = global_strata_size
+        else:
+            if game_wdl == 0.5:
+                # Draws are allowed to be smaller.
+                target_strata_size = min(
+                    global_strata_size,
+                    max_feasible_for_group,
+                )
+            else:
+                # Decisive games must hit the global size.
+                target_strata_size = global_strata_size
+
+        n_signal = math.floor(target_strata_size * signal_ratio)
+        n_noise = target_strata_size - n_signal
+
+        if n_signal <= 0 or n_noise <= 0:
+            raise ValueError(
+                f"Computed invalid sample sizes for group {group_key}: "
+                f"target_strata_size={target_strata_size}, "
+                f"n_signal={n_signal}, n_noise={n_noise}"
+            )
+
         signal_df = group_df[group_df["signal_type"] == "signal"]
         noise_df = group_df[group_df["signal_type"] == "noise"]
+
+        if len(signal_df) < n_signal or len(noise_df) < n_noise:
+            raise ValueError(
+                f"Not enough rows for group {group_key}: "
+                f"need {n_signal} signal / {n_noise} noise, "
+                f"available {len(signal_df)} signal / {len(noise_df)} noise"
+            )
 
         sampled_signal = signal_df.sample(
             n=n_signal,
@@ -349,10 +443,18 @@ def sample_uniform_phase_wdl_stm_signal_noise(
         sampled_parts.append(sampled_signal)
         sampled_parts.append(sampled_noise)
 
+        print(
+            f"group={group_key} | "
+            f"target={target_strata_size:,} | "
+            f"signal={n_signal:,} | noise={n_noise:,}"
+        )
+
     sampled_df = (
         pd.concat(sampled_parts, ignore_index=True)
         .reset_index(drop=True)
     )
+
+    print(sampled_df.shape)
 
     return sampled_df
 

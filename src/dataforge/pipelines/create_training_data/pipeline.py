@@ -23,8 +23,14 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="remove_positions_from_short_games_node",
         ),
         node(
-            func=add_features,
+            func=remove_positions_from_early_ply,
             inputs="qualified_quiet_positions",
+            outputs="qualified_quiet_positions_without_early_plys",
+            name="remove_positions_from_early_ply_node",
+        ),
+        node(
+            func=add_features,
+            inputs="qualified_quiet_positions_without_early_plys",
             outputs="qualified_quiet_positions_with_features",
             name="add_features_node",
         ),

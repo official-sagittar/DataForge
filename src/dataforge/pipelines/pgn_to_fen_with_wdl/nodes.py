@@ -63,6 +63,96 @@ def calc_pos_phase(board) -> int:
     return clamp(int(phase), 0, 256)
 
 
+SEE_VALUES = {
+    chess.PAWN: 100, chess.KNIGHT: 300, chess.BISHOP: 310,
+    chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 20000
+}
+
+
+def get_least_valuable_attacker(board, square, side):
+    """
+    Returns (from_square, piece_type) of the least valuable attacker
+    of `square` by `side`, or (None, None) if no attacker exists.
+    """
+    # Check attackers in order of value: P, N, B, R, Q, K
+    for piece_type in [chess.PAWN, chess.KNIGHT, chess.BISHOP,
+                       chess.ROOK, chess.QUEEN, chess.KING]:
+        attackers = board.attackers(side, square)
+        # Filter to only this piece type
+        for sq in attackers:
+            if board.piece_at(sq) and board.piece_at(sq).piece_type == piece_type:
+                return sq, piece_type
+    return None, None
+
+
+def see(board, move):
+    """
+    Static Exchange Evaluation for a capture move.
+    Returns the material gain/loss for the side making the move.
+    Positive = winning capture, negative = losing capture, 0 = even.
+    """
+    to_sq = move.to_square
+    from_sq = move.from_square
+
+    # Value of the piece being captured
+    target = board.piece_at(to_sq)
+    if target is None:
+        # En passant
+        if board.is_en_passant(move):
+            gain = [SEE_VALUES[chess.PAWN]]
+        else:
+            return 0  # not a capture
+    else:
+        gain = [SEE_VALUES[target.piece_type]]
+
+    # Make the capture on a copy of the board
+    board_copy = board.copy()
+    board_copy.push(move)
+
+    # Now simulate recaptures
+    side = board_copy.turn  # opponent's turn to recapture
+
+    while True:
+        lva_sq, lva_type = get_least_valuable_attacker(board_copy, to_sq, side)
+
+        if lva_sq is None:
+            break  # no more recaptures possible
+
+        gain.append(SEE_VALUES[lva_type] - gain[-1])
+
+        recapture = chess.Move(lva_sq, to_sq)
+        board_copy.push(recapture)
+        side = board_copy.turn
+
+    # Minimax backwards through the gain sequence
+    # Each side only recaptures if it's profitable
+    for i in range(len(gain) - 2, -1, -1):
+        gain[i] = max(-gain[i + 1], gain[i])
+
+    return gain[0]
+
+
+def is_quiet_pos(board, best_move, eval_type, use_see=False) -> bool:
+    if board.is_check():
+        return False
+
+    if board.is_capture(best_move):
+        return False
+
+    if eval_type == "mate":
+        return False
+
+    if use_see:
+        for move in board.legal_moves:
+            if board.is_capture(move):
+                if see(board, move) >= 0:  # a non-losing capture exists
+                    return False
+
+        return True
+
+    return not any(board.is_capture(m) for m in board.legal_moves)
+
+
 def pgn_to_fen_with_wdl(pgn_dir: str) -> str:
     pgn_dir = Path(pgn_dir)
 
@@ -98,18 +188,11 @@ def pgn_to_fen_with_wdl(pgn_dir: str) -> str:
                 ply = 0
                 for node in game.mainline():
                     fen = board.fen()
+                    move = node.move
 
                     phase = calc_pos_phase(board)
                     eval_type, eval_value, depth, engine_time = parse_engine_comment(node.comment)
-
-                    pos_has_capture_moves = any(board.is_capture(m) for m in board.legal_moves)
-                    is_quite_pos = (
-                        pos_has_capture_moves == False
-                        and board.is_check() == False
-                        and eval_type != "mate"
-                    )
-
-                    move = node.move
+                    is_quiet = is_quiet_pos(board, move, eval_type)
 
                     rows.append((
                         game_id,
@@ -119,7 +202,7 @@ def pgn_to_fen_with_wdl(pgn_dir: str) -> str:
                         fen,
                         move.uci(),
                         node.comment,
-                        is_quite_pos,
+                        is_quiet,
                         phase,
                         eval_type,
                         eval_value,
