@@ -4,11 +4,30 @@
 # Link: https://docs.kedro.org/en/stable/data/data_catalog.html
 
 raw_labelled_fens:
-  type: pandas.ParquetDataset
-  filepath: data/03_raw_fens/Raw_Labelled_FENs.parquet
-  versioned: true
+  type: partitions.PartitionedDataset
+  path: data/03_raw_fens/Raw_Labelled_FENs
+  dataset:
+    type: pandas.ParquetDataset
+    save_args:
+      engine: pyarrow
+      compression: snappy
+      index: false
+    load_args:
+      engine: pyarrow
+
+quiet_positions:
+  type: partitions.PartitionedDataset
+  path: data/04_intermediate/Quite_Positions
+  dataset:
+    type: pandas.ParquetDataset
+    save_args:
+      engine: pyarrow
+      compression: snappy
+      index: false
+    load_args:
+      engine: pyarrow
 
 training_data:
   type: pandas.ParquetDataset
-  filepath: data/04_training_data/Training_Data.parquet
+  filepath: data/05_training_data/Training_Data.parquet
   versioned: true

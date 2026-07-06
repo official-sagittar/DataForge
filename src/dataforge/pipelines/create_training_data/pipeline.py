@@ -11,8 +11,14 @@ def create_pipeline(**kwargs) -> Pipeline:
             name="filter_quiet_positions_node",
         ),
         node(
-            func=remove_duplicate_positions,
+            func=combine_partitions,
             inputs="quiet_positions",
+            outputs="quiet_positions_combined",
+            name="combine_partitions_node",
+        ),
+        node(
+            func=remove_duplicate_positions,
+            inputs="quiet_positions_combined",
             outputs="dedup_quiet_positions",
             name="remove_duplicate_positions_node",
         ),

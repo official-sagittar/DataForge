@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import math
 from pathlib import Path
 from datetime import datetime
@@ -7,38 +8,65 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def filter_quiet_positions(df: pd.DataFrame) -> pd.DataFrame:
-    print(df.shape)
-    return df[df["pos_is_quiet"]]
+def combine_partitions(
+    partitions: dict[str, Callable[[], pd.DataFrame]],
+) -> pd.DataFrame:
+    dfs = []
+
+    for partition_name, load_partition in partitions.items():
+        dfs.append(load_partition())
+
+    if not dfs:
+        return pd.DataFrame()
+
+    return pd.concat(dfs, ignore_index=True)
+
+
+def filter_quiet_positions(
+        raw_labelled_fens: dict[str, Callable[[], pd.DataFrame]]
+    ) -> dict[str, pd.DataFrame]:
+    quiet_partitions = {}
+    for partition_key, load_partition in raw_labelled_fens.items():
+        df = load_partition()
+        quiet_df = df[df["pos_is_quiet"]].copy()
+        if not quiet_df.empty:
+            quiet_partitions[partition_key] = quiet_df
+    return quiet_partitions
 
 
 def remove_duplicate_positions(df: pd.DataFrame) -> pd.DataFrame:
-    print(df.shape)
     return df.drop_duplicates(subset=['pos_fen'], keep='first')
 
 
 def remove_positions_from_short_games(df: pd.DataFrame) -> pd.DataFrame:
-    print(df.shape)
     return df[df['game_plycount'] >= 20]
 
 
 def remove_positions_from_early_ply(df: pd.DataFrame) -> pd.DataFrame:
-    print(df.shape)
     return df[df['pos_ply'] > 8]
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    print(df.shape)
     df["pos_stm"] = df["pos_fen"].str.split().str[1]
+
     df.loc[:, "pos_phase_label"] = np.where(
         df["pos_phase"] >= 128,
         "EG",
         "MG",
     )
+
     df["pos_eval_white_pov"] = np.where(
         df["pos_stm"] == "w",
         df["pos_eval_stm_pov"],
         -df["pos_eval_stm_pov"],
+    )
+
+    df["is_bestmove_promotion"] = (
+        df["pos_bestmove"]
+        .astype("string")
+        .str.lower()
+        .str.match(r"^[a-h][1-8][a-h][1-8][qrbn]$")
+        .fillna(False)
     )
 
     return df
@@ -60,8 +88,6 @@ def sample_positions_by_start_fen_phase(
 
     Returns all original columns.
     """
-
-    print(df.shape)
 
     if not 0 < sample_pct <= 1:
         raise ValueError("sample_pct must be between 0 and 1")
@@ -118,24 +144,29 @@ def remove_iqr_outliers_by_phase_wdl_stm(
     Removes outliers using IQR bounds computed within:
         phase x WDL x stm
 
-    Lower outliers:
-        value < Q1 - (1.5 * IQR)
-
-    Upper outliers:
-        value > Q3 + (1.5 * IQR)
+    Promotion bestmoves are ignored for outlier removal:
+      - not used to compute IQR bounds
+      - never removed as outliers
     """
 
-    print(df.shape)
+    required_cols = [
+        "pos_eval_white_pov",
+        "pos_phase_label",
+        "game_wdl",
+        "pos_stm",
+        "is_bestmove_promotion",
+    ]
 
-    required_cols = ["pos_eval_white_pov", "pos_phase_label", "game_wdl", "pos_stm"]
     missing_cols = [col for col in required_cols if col not in df.columns]
-
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
 
     work_df = df.copy()
 
-    work_df["pos_eval_white_pov"] = pd.to_numeric(work_df["pos_eval_white_pov"], errors="coerce")
+    work_df["pos_eval_white_pov"] = pd.to_numeric(
+        work_df["pos_eval_white_pov"],
+        errors="coerce",
+    )
     work_df = work_df.dropna(subset=["pos_eval_white_pov"]).copy()
 
     group_cols = ["pos_phase_label", "game_wdl"]
@@ -143,8 +174,11 @@ def remove_iqr_outliers_by_phase_wdl_stm(
     if include_stm:
         group_cols.append("pos_stm")
 
+    # Compute IQR bounds only from non-promotion rows.
+    iqr_source_df = work_df[~work_df["is_bestmove_promotion"]].copy()
+
     iqr_bounds = (
-        work_df
+        iqr_source_df
         .groupby(group_cols)["pos_eval_white_pov"]
         .agg(
             q1=lambda s: s.quantile(0.25),
@@ -180,9 +214,10 @@ def remove_iqr_outliers_by_phase_wdl_stm(
         | work_df["is_upper_iqr_outlier"]
     )
 
-    clean_df = work_df[~work_df["is_iqr_outlier"]].copy()
-
-    print(clean_df.shape)
+    clean_df = work_df[
+        (~work_df["is_iqr_outlier"])
+        | (work_df["is_bestmove_promotion"])
+    ].copy()
 
     return clean_df.reset_index(drop=True)
 
@@ -288,8 +323,6 @@ def sample_uniform_phase_wdl_stm_signal_noise(
           Draw strata are capped at their own feasible size if smaller.
           This prevents weak draw buckets from bottlenecking the whole dataset.
     """
-
-    print(df.shape)
 
     if not 0 < signal_ratio < 1:
         raise ValueError("signal_ratio must be between 0 and 1")

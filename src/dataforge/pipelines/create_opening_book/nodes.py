@@ -52,7 +52,7 @@ def create_opening_book(
         line_number, line = rng.choice(seed_lines)
         board = _parse_seed_position(line, line_number)
 
-        for _ in range(4):
+        for _ in range(5):
             legal_moves = list(board.legal_moves)
             if not legal_moves:
                 break

@@ -22,4 +22,4 @@ pgn_to_fen_with_wdl:
   pgn_dir: "data/02_pgns"
 
 create_training_data:
-  training_data_output_dir: "data/04_training_data"
+  training_data_output_dir: "data/05_training_data"
